@@ -8,45 +8,72 @@ int main(int argc, char** argv){
         exit(1);
     }
 
+    printf("Inizializzo il file system... ");
     init_fs(argv[1]);
+    puts("FATTO");
+    char* input = (char*)malloc(sizeof(char)*MAX_INPUT_SIZE);
+    char* cmd = (char*)malloc(sizeof(char)*MAX_CMD_SIZE);
+    char** args = (char**)malloc(sizeof(char*) * MAX_NUM_ARGS);
+    int argsNum;
 
-    char* input = (char*)malloc(sizeof(char)*MAX_BUFFER_SIZE);
-    while(1){
-        if(!fgets(input, MAX_BUFFER_SIZE, stdin)){
+    do{
+        printf("$: ");
+        if(!fgets(input, MAX_INPUT_SIZE, stdin)){
+            printf("%d %p %s %s", argsNum, args, cmd, input);
             free(input);
             error_handle("fgets");
         }
 
-        char* cmd = (char*)malloc(sizeof(char)*MAX_CMD_SIZE);
-        char** args;
-        int argsNum = input_tokenize(input, cmd, args);
+        for(int i=0; i < MAX_NUM_ARGS; i++){
+            args[i] = (char*)calloc(MAX_DIRNAME_SIZE, sizeof(char));
+        }
+        argsNum = input_tokenize(input, cmd, args);
 
         if(!strcmp(cmd, "\n")){
-            free(cmd);
-            return 0;
+            break;
         }
-        else if(!strcmp(cmd, "createFile") && argsNum != 1){
+        else if(!strcmp(cmd, "createFile") && argsNum == 1){
+            if(!createFile(args[0])) printf("File %s creato\n", args[0]);
+        }
+        else if(!strcmp(cmd, "eraseFile") && argsNum == 1){
+            if(!eraseFile(args[0])) printf("File %s cancellato\n", args[0]);
+        }
+        else if(!strcmp(cmd, "open") && argsNum == 1){
+            FileHandle* fh = openFile(args[0]);
+        }
+        else if(!strcmp(cmd, "write") && argsNum == 1){
+            FileHandle* fh = openFile(args[0]);
+            if(!fh){
+                puts("Impossibile scrivere sul file");
+                continue;
+            }
+            char* data = (char*)malloc(sizeof(char) * MAX_INPUT_SIZE);
+            puts("Cosa vorresti scrivere sul file?");
+            fgets(data, MAX_INPUT_SIZE, stdin);
+            writeOnFile(fh, data, MAX_INPUT_SIZE);
+            free(data);
+            closeFile(fh);
+        }
+        else if(!strcmp(cmd, "read") && argsNum == 1){
+            FileHandle* fh = openFile(args[0]);
+            if(!fh){
+                puts("Impossibile scrivere sul file");
+                continue;
+            }
+            char* data = (char*)malloc(sizeof(char) * MAX_INPUT_SIZE);
+            free(data);
+            closeFile(fh);
+        }
+        else if(!strcmp(cmd, "seek") && argsNum == 1){
             
         }
-        else if(!strcmp(cmd, "eraseFile") && argsNum != 1){
+        else if(!strcmp(cmd, "createDir") && argsNum == 1){
             
         }
-        else if(!strcmp(cmd, "write") && argsNum != 1){
+        else if(!strcmp(cmd, "eraseDir") && argsNum == 1){
             
         }
-        else if(!strcmp(cmd, "read") && argsNum != 1){
-            
-        }
-        else if(!strcmp(cmd, "seek") && argsNum != 1){
-            
-        }
-        else if(!strcmp(cmd, "createDir") && argsNum != 1){
-            
-        }
-        else if(!strcmp(cmd, "eraseDir") && argsNum != 1){
-            
-        }
-        else if(!strcmp(cmd, "changeDir") && argsNum != 1){
+        else if(!strcmp(cmd, "changeDir") && argsNum == 1){
             
         }
         else if(!strcmp(cmd, "listDir\n")){
@@ -57,7 +84,15 @@ int main(int argc, char** argv){
             
         }
         else{
-            printf("USAGE: [command] [filename]\n");
+            printf("USAGE: [command] [param]\n");
         }
+    }while(1);
+    puts("Sto terminando il programma");
+    fflush(stdin);
+    for(int i = 0; i < MAX_NUM_ARGS; i++){
+        free(args[i]);
     }
+    free(args);
+    free(cmd);
+    free(input);
 }
