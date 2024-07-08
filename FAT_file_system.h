@@ -12,8 +12,10 @@
 #include <string.h>
 
 void error_handle(const char* error);
-void init_fs(const char *filename);
+void launch_fs(const char *filename);
 int input_tokenize(char* input, char* cmd, char** args);
+int printBuffer(const char* buffer, int maxSize);
+int aux(char* data);
 
 #define MAX_DIRNAME_SIZE 256
 #define MAX_DIR_SIZE 64
@@ -30,11 +32,13 @@ typedef struct{
     int start;
     int size;
     int is_dir;
+    int is_open;
 } DirectoryEntry;
 
 typedef struct{
     DirectoryEntry head[MAX_DIR_SIZE];
     int elemCount;
+    struct Directory* parent;
 } Directory;
 
 typedef struct{
@@ -59,10 +63,10 @@ int eraseFile(char* fileName);
 FileHandle* openFile(const char *fileName);
 void closeFile(FileHandle* fh);
 int writeOnFile(FileHandle* fh, const char* data, int length);
-int readFromFile(char* fileName, int maxBytes, char* buffer);
-int seek(char* fileName);
+int readFromFile(FileHandle* fh, int maxBytes, char* buffer);
+int seek(FileHandle* fh, int pos);
 int createDir(const char* dirName);
 int eraseDir(char* dirName);
-int changeDir(const char* path);
-int listDir(const char* dirPath);
+int changeDir(char* path);
+int listDir();
 #endif
