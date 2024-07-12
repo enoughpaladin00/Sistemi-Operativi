@@ -27,9 +27,7 @@ Dopo la compilazione, se vuoi eliminare file superflui, esegui:
 
 Per eseguire il file system, esegui il seguente comando:
 
-'''bash
-./FAT_proj <fileSystemName>
-'''
+'./FAT_proj <fileSystemName>'
 
 Dove '<fileSystemName>' è il nome del file che verrà utilizzato come memoria del file system.
 
