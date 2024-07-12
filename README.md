@@ -17,15 +17,11 @@ Il progetto è composto dai seguenti file:
 
 Per compilare il progetto, eseguire i seguenti comandi nella directory del progetto:
 
-'''bash
-make
-'''
+'make'
 
 Dopo la compilazione, se vuoi eliminare file superflui, esegui:
 
-'''bash
-make clean
-'''
+'make clean'
 
 ###Esecuzione
 
