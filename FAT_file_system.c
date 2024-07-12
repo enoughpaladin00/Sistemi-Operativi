@@ -67,22 +67,17 @@ int find_file(const char* name, Directory *dir){
     return -1;
 }
 
+/*
+Funzione ausiliaria che conta i caratteri di una frase, escludendone il newline e il delimitatore
+*/
 int aux(char* buffer){
     int i = 0;
     while(buffer[i] != '\n' && buffer[i] != '\0'){
         i++;
-    }
+    }/*
     if(buffer[i] == '\n')
         buffer[i] = '\0';
-    return i;
-}
-
-int printBuffer(const char* buffer, int maxSize){
-    int i = 0;
-    while(buffer[i] != '\0' || buffer[i] != '\n'){
-        printf("%c", buffer[i]);
-        i++;
-    }
+    */
     return i;
 }
 
@@ -176,7 +171,7 @@ FileHandle* openFile(const char *fileName){
 }
 
 /*
-Funzione che prende in input un file e lo chiude
+Funzione che prende in input un fileHandle e lo chiude, scrivendo alla fine del suo buffer un carattere di delimitazione
 */
 void closeFile(FileHandle* fh){
     writeOnFile(fh, "\0", 1);
@@ -201,7 +196,7 @@ int writeOnFile(FileHandle* fh, const char* data, int length){
         memcpy(fs_buffer + curr_block * BLOCK_SIZE + block_cursor, data, to_write);
         printf("HO SCRITTO: %s\n", fs_buffer + curr_block * BLOCK_SIZE + block_cursor);
         //Se la parte rimanente del blocco non basta, aggiungo un altro blocco al file
-        if(!(length < free_block)){
+        if(to_write == free_block){
             int next_block = find_block();
             if(next_block == -1) return -1;
             fs.fat[curr_block] = next_block;
@@ -234,7 +229,7 @@ int readFromFile(FileHandle* fh, int maxSize, char* buffer){
         int to_read = maxSize < free_block_space ? maxSize : free_block_space;
 
         printf("Reading %d bytes at block %d, cursor %d\n", to_read, curr_block, block_cursor);
-        memcpy(buffer, fs_buffer + curr_block * BLOCK_SIZE + block_cursor, maxSize);
+        memcpy(buffer, fs_buffer + curr_block * BLOCK_SIZE + block_cursor, to_read);
 
         fh->pointer += to_read;
         maxSize -= to_read;
@@ -246,19 +241,25 @@ int readFromFile(FileHandle* fh, int maxSize, char* buffer){
     return read;
 }
 
+/*
+Funzione che prende in ingresso un puntatore a fileHandle e un intero e sposta il cursore del file nella posizione dell'intero
+*/
 int seek(FileHandle* fh, int pos){
     if(pos >= 0 && pos<=fh->size){
         fh->pointer = pos;
     }
 }
 
+/*
+Funzione che prende in ingresso una stringa e crea una cartella con quel nome
+*/
 int createDir(const char* dirName){
     if(fs.current_dir->elemCount >= MAX_DIR_SIZE){
         fputs("ERRORE: La cartella e' piena", stderr);
         return -1;
     }
     if(find_file(dirName, fs.current_dir) != -1){
-        fputs("ERRORE: Esiste un ekemento con quel nome!", stderr);
+        fputs("ERRORE: Esiste un elemento con quel nome!", stderr);
         return -1;
     }
     int block = find_block();
@@ -279,11 +280,16 @@ int createDir(const char* dirName){
     return 0;
 }
 
+/*
+Funzione che prende in ingresso un percorso del file system (stringa) e, se esiste, la imposta come cartella corrente
+*/
 int changeDir(char* path){
     char* token;
     while(token = strsep(&path, "/")){
         if(!strcmp(token, "..")){
-            fs.current_dir = (Directory*)fs.current_dir->parent;
+            if(fs.current_dir->parent)
+                fs.current_dir = (Directory*)fs.current_dir->parent;
+            else fputs("ERRORE: Già nella directory root", stderr);
         }
         else if(!strcmp(token, ".")){
             continue;
@@ -302,15 +308,21 @@ int changeDir(char* path){
     return 0;
 }
 
+/*
+Funzione che stampa in output tutte le entry della cartella attuale
+*/
 int listDir(){
     printf("[DIR]\t.\n[DIR]\t..\n");
     for(int i=0; i < fs.current_dir->elemCount; i++){
         DirectoryEntry* entry = &fs.current_dir->head[i];
         if(entry->is_dir) printf("[DIR]\t%s\t%dB\n", entry->name, entry->size);
-        else printf("[FILE]%s\t%dB\n", entry->name, entry->size);
+        else printf("[FILE]\t%s\t%dB\n", entry->name, entry->size);
     }
 }
 
+/*/
+Funzione che prende in ingresso il nome di una sottocartella e, se esiste, la cancella solo se vuota
+*/
 int eraseDir(char* dirName){
     int index = find_file(dirName, fs.current_dir);
     if(index == -1){
@@ -318,7 +330,7 @@ int eraseDir(char* dirName){
         return -1;
     }
     DirectoryEntry* entry = &fs.current_dir->head[index];
-    if(entry->is_dir){
+    if(!entry->is_dir){
         fputs("ERRORE: Stai cercando di cancellare un file nel modo sbagliato", stderr);
         return -1;
     }

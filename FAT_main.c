@@ -21,7 +21,7 @@ int main(int argc, char** argv){
     FileHandle* fh = NULL;
 
     do{
-        printf("--------------------------\n$: ");
+        printf("\n--------------------------\n$: ");
         if(!fgets(input, MAX_INPUT_SIZE, stdin)){
             printf("%d %p %s %s", argsNum, args, cmd, input);
             free(input);
@@ -29,19 +29,23 @@ int main(int argc, char** argv){
         }
 
         argsNum = input_tokenize(input, cmd, args);
-
+        
         if(!strcmp(cmd, "")){
             break;
         }
         else if(!strcmp(cmd, "createFile") && argsNum == 1){
-            if(!createFile(args[0])) printf("File %s creato\n", args[0]);
+            if(!createFile(args[0])) printf("File %s creato", args[0]);
         }
         else if(!strcmp(cmd, "eraseFile") && argsNum == 1){
-            if(!eraseFile(args[0])) printf("File %s cancellato\n", args[0]);
+            if(!eraseFile(args[0])) printf("File %s cancellato", args[0]);
         }
         else if(!strcmp(cmd, "open") && argsNum == 1){
+            if(fh){
+                fputs("ERRORE: Un file è già aperto", stderr);
+                continue;
+            }
             fh = openFile(args[0]);
-            printf("INFO: Il file %s è stato aperto\n", fh->entry->name);
+            if(fh)printf("INFO: Il file %s è stato aperto", fh->entry->name);
         }
         else if(!strcmp(cmd, "close") && argsNum == 1){
             closeFile(fh);
@@ -64,15 +68,14 @@ int main(int argc, char** argv){
         }
         else if(!strcmp(cmd, "read") && argsNum < 2){
             if(!fh){
-                fputs("ERRORE: Impossibile leggere dal file\n", stderr);
+                fputs("ERRORE: Impossibile leggere dal file", stderr);
                 continue;
             }
             int bytes_to_read = MAX_INPUT_SIZE;
-            printf("%s\n", args[0]);
             if(strcmp(args[0], "")) bytes_to_read = atoi(args[0]);
             char* data = (char*)calloc(MAX_INPUT_SIZE, sizeof(char));
             printf("INFO: Leggo dal file %d bytes\n", readFromFile(fh, bytes_to_read, data));
-            printf("STAMPO: %s\n", data);
+            printf("STAMPO: %s", data);
             free(data);
         }
         else if(!strcmp(cmd, "seek") && argsNum == 1){
@@ -83,23 +86,24 @@ int main(int argc, char** argv){
             seek(fh, atoi(args[0]));
         }
         else if(!strcmp(cmd, "createDir") && argsNum == 1){
-            if(!createDir(args[0])) printf("Cartella %s creata\n", args[0]);
+            if(!createDir(args[0])) printf("Cartella %s creata", args[0]);
         }
         else if(!strcmp(cmd, "eraseDir") && argsNum == 1){
-            if(!eraseDir(args[0])) printf("Cartella %s eliminata\n", args[0]);
+            if(!eraseDir(args[0])) printf("Cartella %s eliminata", args[0]);
         }
         else if(!strcmp(cmd, "changeDir") && argsNum == 1){
-            if(!changeDir(args[0])) printf("Entro nella cartella %s\n", args[0]);
+            changeDir(args[0]);
         }
         else if(!strcmp(cmd, "listDir")){
             listDir();
             
         }
         else{
-            printf("USAGE: [command] [param]\n");
+            printf("USAGE: [command] [param]");
         }
     }while(1);
     puts("INFO: Sto terminando il programma");
+    if(fh != NULL) closeFile(fh);
     fflush(stdin);
     fflush(stdout);
     fflush(stderr);
@@ -109,5 +113,6 @@ int main(int argc, char** argv){
     free(args);
     free(cmd);
     free(input);
+    munmap(fs_buffer, BLOCK_SIZE * MAX_BLOCKS);
     return 0;
 }

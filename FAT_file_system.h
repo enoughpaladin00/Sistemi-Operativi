@@ -14,7 +14,6 @@
 void error_handle(const char* error);
 void launch_fs(const char *filename);
 int input_tokenize(char* input, char* cmd, char** args);
-int printBuffer(const char* buffer, int maxSize);
 int aux(char* data);
 
 #define MAX_DIRNAME_SIZE 256
