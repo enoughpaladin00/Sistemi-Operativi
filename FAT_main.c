@@ -35,9 +35,17 @@ int main(int argc, char** argv){
         }
         else if(!strcmp(cmd, "createFile") && argsNum == 1){
             if(!createFile(args[0])) printf("File %s creato", args[0]);
+            syncro(fs_map);
         }
         else if(!strcmp(cmd, "eraseFile") && argsNum == 1){
             if(!eraseFile(args[0])) printf("File %s cancellato", args[0]);
+            syncro(fs_map);
+        }
+        else if(!strcmp(cmd, "print")){
+            for(int i = 0; i < MAX_BLOCKS; i++){
+                printf("|%d",fs.fat[i]);
+            }
+            puts("|");
         }
         else if(!strcmp(cmd, "open") && argsNum == 1){
             if(fh){
@@ -87,9 +95,11 @@ int main(int argc, char** argv){
         }
         else if(!strcmp(cmd, "createDir") && argsNum == 1){
             if(!createDir(args[0])) printf("Cartella %s creata", args[0]);
+            syncro(fs_map);
         }
         else if(!strcmp(cmd, "eraseDir") && argsNum == 1){
             if(!eraseDir(args[0])) printf("Cartella %s eliminata", args[0]);
+            syncro(fs_map);
         }
         else if(!strcmp(cmd, "changeDir") && argsNum == 1){
             changeDir(args[0]);
@@ -103,8 +113,8 @@ int main(int argc, char** argv){
         }
     }while(1);
     puts("INFO: Sto terminando il programma");
+    
     if(fh != NULL) closeFile(fh);
-    fflush(stdin);
     fflush(stdout);
     fflush(stderr);
     for(int j = 0; j < MAX_NUM_ARGS; j++){
@@ -113,6 +123,6 @@ int main(int argc, char** argv){
     free(args);
     free(cmd);
     free(input);
-    munmap(fs_buffer, BLOCK_SIZE * MAX_BLOCKS);
+    close_fs(argv[1]);
     return 0;
 }
