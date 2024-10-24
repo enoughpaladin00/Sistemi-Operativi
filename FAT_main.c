@@ -10,6 +10,7 @@ int main(int argc, char** argv){
 
     printf("INFO: Inizializzo il file system... ");
     launch_fs(argv[1]);
+    printf("%x\t%x\n", fs_map, fs_buffer + MAX_BLOCKS * BLOCK_SIZE);
     puts("FATTO");
     char* input = (char*)malloc(sizeof(char)*MAX_INPUT_SIZE);
     char* cmd = (char*)malloc(sizeof(char)*MAX_CMD_SIZE);

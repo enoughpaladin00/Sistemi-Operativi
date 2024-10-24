@@ -35,7 +35,7 @@ typedef struct{
     int is_dir;
     struct DirectoryEntry* parent;
     int is_open;
-    int *head;
+    int* head;
 } DirectoryEntry;
 
 /*typedef struct{

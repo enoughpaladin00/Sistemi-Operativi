@@ -17,6 +17,9 @@ void launch_fs(const char *filename){
     if(fs_map == MAP_FAILED) error_handle("mmap");
     fs_buffer = fs_map + sizeof(FileSystem);
 
+    /////////////////////////////////
+    ((FileSystem*)fs_map)->root.elemCount = 0;
+
     if(close(fd)) error_handle("close");
 
     if(((FileSystem*)fs_map)->root.elemCount == 0){
@@ -25,8 +28,9 @@ void launch_fs(const char *filename){
         fs.root.size = STARTING_DIR_SIZE;
         fs.root.parent = NULL;
         fs.root.head = (int*)fs_buffer;
+        fs.fat[0] = FAT_EOF;
 
-        for(int i = 0; i < MAX_BLOCKS; i++){
+        for(int i = 1; i < MAX_BLOCKS; i++){
             fs.fat[i] = FAT_FREE;
         }
     }else{
@@ -133,14 +137,16 @@ int createFile(char* fileName){
     if(block == -1) return -1;
 
     fs.fat[block] = FAT_EOF;
-    fs.current_dir->head[fs.current_dir->elemCount++] =  block;
+    fs.current_dir->head[fs.current_dir->elemCount] =  block;
 
-    DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + (fs.current_dir->head[fs.current_dir->elemCount++] * BLOCK_SIZE));
+    DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + (fs.current_dir->head[fs.current_dir->elemCount] * BLOCK_SIZE));
     strncpy(entry->name, fileName, MAX_DIRNAME_SIZE);
     entry->start = block;
     entry->elemCount = 0;
     entry->is_dir = 0;
     entry->is_open = 0;
+    fs.current_dir->elemCount++;
+
     return 0;
 }
 
@@ -305,7 +311,7 @@ int createDir(const char* dirName){
     if(block == -1) return -1;
 
     fs.fat[block] = FAT_EOF;
-    fs.current_dir->head[fs.current_dir->elemCount++] = block;
+    fs.current_dir->head[fs.current_dir->elemCount] = block;
 
     DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + fs.current_dir->head[fs.current_dir->elemCount] * BLOCK_SIZE);
     strncpy(entry->name, dirName, MAX_DIRNAME_SIZE);
@@ -319,9 +325,9 @@ int createDir(const char* dirName){
     i += sizeof(int) * 4;
     i += sizeof(DirectoryEntry);
     i += sizeof(int);
-    for(;i < BLOCK_SIZE; i++){
-        entry->head[i]= 0;
-    }
+    char* temp = (char*)(fs_buffer + fs.current_dir->head[fs.current_dir->elemCount] * BLOCK_SIZE);
+    memset((int*)&entry->head, 0, BLOCK_SIZE - sizeof(DirectoryEntry));
+    fs.current_dir->elemCount++;
     return 0;
 }
 
