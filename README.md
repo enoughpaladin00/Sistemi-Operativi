@@ -42,7 +42,7 @@ Di seguito sono elencati i comandi disponibili nell'interfaccia utente del file 
 - **open <fileName>**: Apre il file con il nome specificato nella cartella corrente.
 - **close <fileName>**: Chiude il file attualmente aperto.
 - **write**: Scrive dati nel file aperto.
-- **read <numytes>**: Legge il numero di byte specificato dal file aperto.
+- **read <numbytes>**: Legge il numero di byte specificato dal file aperto.
 - **seek <pos>**: Sposta il puntatore di lettura/scrittura alla posizione indicata.
 - **createDir <dirName>**: Crea una nuova sottocartella con il nome specificato in quella corrente.
 - **eraseDir <dirName>**: Cancella, se vuota, una sottocartella con il nome specificato da quella corrente.

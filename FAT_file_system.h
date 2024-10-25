@@ -47,7 +47,7 @@ typedef struct{
 
 typedef struct{
     int fat[MAX_BLOCKS];
-    DirectoryEntry root;
+    DirectoryEntry *root;
     DirectoryEntry *current_dir;
 } FileSystem;
 

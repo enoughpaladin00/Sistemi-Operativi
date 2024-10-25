@@ -16,27 +16,34 @@ void launch_fs(const char *filename){
     fs_map = mmap(NULL, sizeof(FileSystem) + BLOCK_SIZE * MAX_BLOCKS, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if(fs_map == MAP_FAILED) error_handle("mmap");
     fs_buffer = fs_map + sizeof(FileSystem);
-
+    fs.root = (DirectoryEntry*)fs_buffer;
     /////////////////////////////////
-    ((FileSystem*)fs_map)->root.elemCount = 0;
+    fs.root->elemCount = 0;
 
     if(close(fd)) error_handle("close");
 
-    if(((FileSystem*)fs_map)->root.elemCount == 0){
-        fs.current_dir = &fs.root;
-        fs.root.elemCount = 0;
-        fs.root.size = STARTING_DIR_SIZE;
-        fs.root.parent = NULL;
-        fs.root.head = (int*)fs_buffer;
+    if(fs.root->elemCount == 0){
+        fs.root->size = STARTING_DIR_SIZE;
+        fs.root->start = 0;
+        fs.root->is_dir = 1;
+        fs.root->is_open = 1;
+        fs.root->parent = NULL;
+        //Imposto tutti gli altri bit della cartella a 0
+        int i = sizeof(char) * MAX_DIRNAME_SIZE;
+        i += sizeof(int) * 4;
+        i += sizeof(DirectoryEntry);
+        i += sizeof(int);
+        memset(&fs.root->head, 0, BLOCK_SIZE - sizeof(DirectoryEntry));
         fs.fat[0] = FAT_EOF;
+        fs.current_dir = fs.root;
 
         for(int i = 1; i < MAX_BLOCKS; i++){
             fs.fat[i] = FAT_FREE;
         }
     }else{
         fs = *(FileSystem*)fs_map;
-        fs.current_dir = &fs.root;
-        fs.root.head = (int*)fs_buffer;
+        fs.current_dir = fs.root;
+        fs.root->head = (int*)fs_buffer;
     }
 }
 
@@ -84,7 +91,8 @@ Funzione ausiliaria che cerca un file in una directory. Restituisce l'indice del
 */
 int find_file(const char* name, DirectoryEntry *dir){
     for(int i=0; i < dir->elemCount; i++){
-        if(strcmp(fs_buffer + (dir->head[i] * BLOCK_SIZE), name) == 0) return  i;
+        int block = *(&dir->head + i);
+        if(strcmp(fs_buffer + block * BLOCK_SIZE, name) == 0) return  i;
     }
     return -1;
 }
@@ -137,9 +145,9 @@ int createFile(char* fileName){
     if(block == -1) return -1;
 
     fs.fat[block] = FAT_EOF;
-    fs.current_dir->head[fs.current_dir->elemCount] =  block;
+    *(&fs.current_dir->head + fs.current_dir->elemCount) = block;
 
-    DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + (fs.current_dir->head[fs.current_dir->elemCount] * BLOCK_SIZE));
+    DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + block * BLOCK_SIZE);
     strncpy(entry->name, fileName, MAX_DIRNAME_SIZE);
     entry->start = block;
     entry->elemCount = 0;
@@ -159,7 +167,8 @@ int eraseFile(char* fileName){
         fputs("ERRORE: File non trovato o non esistente", stderr);
         return -1;
     }
-    DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + fs.current_dir->head[file] * BLOCK_SIZE);
+    int fileBlock = *(&fs.current_dir->head + file);
+    DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + fileBlock * BLOCK_SIZE);
     if(entry->is_dir){
         fputs("ERRORE: Per cancellare una directory usa il comando eraseDir [dirName]", stderr);
         return -1;
@@ -172,16 +181,12 @@ int eraseFile(char* fileName){
     while(block != FAT_EOF){
         int next_block = fs.fat[block];
         fs.fat[block] = FAT_FREE;
-        char* i = fs_buffer + (block * BLOCK_SIZE);
-        while(i < fs_buffer + ((block + 1) * BLOCK_SIZE)){
-            i = 0;
-        }
+        memset(fs_buffer + block * BLOCK_SIZE, 0, BLOCK_SIZE);
         block = next_block;
     }
     
     for(int i = file; i < fs.current_dir->elemCount - 1; i++){
-        /////////////////////////////////////////////////////////ATTENTO
-        fs.current_dir->head[i] = fs.current_dir->head[i + 1];
+        *(&fs.current_dir->head + i) = *(&fs.current_dir->head + i+1);
     }
     fs.current_dir->elemCount--;
     return 0;
@@ -196,8 +201,8 @@ FileHandle* openFile(const char *fileName){
         fputs("ERRORE: File non trovato o non esistente", stderr);
         return NULL;
     }
-
-    DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + fs.current_dir->head[file] * BLOCK_SIZE);
+    int block = *(&fs.current_dir->head + file);
+    DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + block * BLOCK_SIZE);
     if(entry->is_dir){
         fputs("ERRORE: Non puoi aprire una directory come se fosse un file", stderr);
         return NULL;
@@ -311,9 +316,9 @@ int createDir(const char* dirName){
     if(block == -1) return -1;
 
     fs.fat[block] = FAT_EOF;
-    fs.current_dir->head[fs.current_dir->elemCount] = block;
+    *(&fs.current_dir->head + fs.current_dir->elemCount) = block;
 
-    DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + fs.current_dir->head[fs.current_dir->elemCount] * BLOCK_SIZE);
+    DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + block * BLOCK_SIZE);
     strncpy(entry->name, dirName, MAX_DIRNAME_SIZE);
     entry->start = block;
     entry->is_dir = 1;
@@ -325,7 +330,6 @@ int createDir(const char* dirName){
     i += sizeof(int) * 4;
     i += sizeof(DirectoryEntry);
     i += sizeof(int);
-    char* temp = (char*)(fs_buffer + fs.current_dir->head[fs.current_dir->elemCount] * BLOCK_SIZE);
     memset((int*)&entry->head, 0, BLOCK_SIZE - sizeof(DirectoryEntry));
     fs.current_dir->elemCount++;
     return 0;
@@ -347,12 +351,12 @@ int changeDir(char* path){
         }
         else{
             int index = find_file(token, fs.current_dir);
-            if(index == -1 || !((DirectoryEntry*)(fs_buffer + fs.current_dir->head[index] * BLOCK_SIZE))->is_dir){
+            int block = *(&fs.current_dir->head + index);
+            if(index == -1 || !((DirectoryEntry*)(fs_buffer + block * BLOCK_SIZE))->is_dir){
                 fputs("ERRORE: percorso non trovato", stderr);
                 return -1;
             }
-
-            DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + fs.current_dir->head[index] * BLOCK_SIZE);
+            DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + block * BLOCK_SIZE);
             fs.current_dir = (DirectoryEntry*)(fs_buffer + entry->start * BLOCK_SIZE);
         }
     }
@@ -368,7 +372,8 @@ int listDir(){
     else
         printf("[DIR]\t.\n");
     for(int i=0; i < fs.current_dir->elemCount; i++){
-        DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + (fs.current_dir->head[i] * BLOCK_SIZE));
+        int block = *(&fs.current_dir->head + i);
+        DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + block * BLOCK_SIZE);
         if(entry->is_dir) printf("[DIR]\t%s\n", entry->name);
         else printf("[FILE]\t%s\t%dB\n", entry->name, entry->elemCount);
     }
@@ -383,7 +388,8 @@ int eraseDir(char* dirName){
         fputs("ERRORE: La cartella che stai cercando di cancellare non esiste", stderr);
         return -1;
     }
-    DirectoryEntry *dir = (DirectoryEntry*)(fs_buffer + fs.current_dir->head[index] * BLOCK_SIZE);
+    int dirBlock = *(&fs.current_dir->head + index);
+    DirectoryEntry *dir = (DirectoryEntry*)(fs_buffer + dirBlock * BLOCK_SIZE);
     if(!dir->is_dir){
         fputs("ERRORE: Stai cercando di cancellare un file nel modo sbagliato", stderr);
         return -1;
@@ -394,10 +400,16 @@ int eraseDir(char* dirName){
         return -1;
     }
 
-    fs.fat[dir->start] = FAT_FREE;
+    int block = dir->start;
+    while(block != FAT_EOF){
+        int next_block = fs.fat[block];
+        fs.fat[block] = FAT_FREE;
+        memset(fs_buffer + block * BLOCK_SIZE, 0, BLOCK_SIZE);
+        block = next_block;
+    }
 
     for(int i = 0; i < fs.current_dir->elemCount - 1; i++){
-        fs.current_dir->head[i] = fs.current_dir->head[i+1];
+        *(&fs.current_dir->head + i) = *(&fs.current_dir->head + i+1);
     }
     fs.current_dir->elemCount--;
 
