@@ -31,7 +31,6 @@ typedef struct{
     char name[MAX_DIRNAME_SIZE];
     int start;
     int elemCount;
-    int size;
     int is_dir;
     struct DirectoryEntry* parent;
     int is_open;
@@ -57,8 +56,7 @@ extern char* fs_map;
 
 typedef struct{
     char* data;
-    int pointer;
-    int size;
+    int cursor;
     DirectoryEntry* entry;
 } FileHandle;
 
@@ -70,8 +68,8 @@ int createFile(char* fileName);
 int eraseFile(char* fileName);
 FileHandle* openFile(const char *fileName);
 void closeFile(FileHandle* fh);
-int writeOnFile(FileHandle* fh, const char* data, int length);
-int readFromFile(FileHandle* fh, int maxBytes, char* buffer);
+int writeOnFile(FileHandle* fh, const char* buffer, int length);
+int readFromFile(FileHandle* fh, const char* buffer, int maxSize);
 int seek(FileHandle* fh, int pos);
 int createDir(const char* dirName);
 int eraseDir(char* dirName);

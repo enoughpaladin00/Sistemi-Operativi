@@ -23,7 +23,6 @@ void launch_fs(const char *filename){
     if(close(fd)) error_handle("close");
 
     if(fs.root->elemCount == 0){
-        fs.root->size = STARTING_DIR_SIZE;
         fs.root->start = 0;
         fs.root->is_dir = 1;
         fs.root->is_open = 1;
@@ -56,7 +55,7 @@ void close_fs(const char* filename){
 Funzione che gestisce gli errori
 */
 void error_handle(const char* error){
-    dprintf(2, "ERRORE %s: %d\n",error, errno);
+    fprintf(stderr, "ERRORE %s: %d\n",error, errno);
     exit(-1);
 };
 
@@ -216,9 +215,8 @@ FileHandle* openFile(const char *fileName){
     entry->is_open = 1;
 
     FileHandle* fh = (FileHandle*)malloc(sizeof(FileHandle));
-    fh->data = fs_buffer + entry->start * BLOCK_SIZE;
-    fh->pointer = 0;
-    fh->size = entry->elemCount;
+    fh->data = &entry->head;
+    fh->cursor = 0;
     fh->entry = entry;
     return fh;
 }
@@ -236,36 +234,31 @@ void closeFile(FileHandle* fh){
 Funzione che prende in ingresso il FileHandle di un file, un buffer e la sua lunghezza e scrive nel file il contenuto del buffer.
 Restituisce il numero di byte scritti se si ha esito positivo, -1 se si ha un errore
 */
-int writeOnFile(FileHandle* fh, const char* data, int length){
-    int written = 0;
-    while(length > 0){
-        int curr_block = fh->pointer / BLOCK_SIZE;
-        int block_cursor = fh->pointer % BLOCK_SIZE;
-        int free_block = BLOCK_SIZE - block_cursor;
-        //Nella parte di blocco libera entra tutto quello che devo scrivere? Sì -> devo scrivere $(length) bytes : No -> devo scrivere tanti bytes quanti ne rimangono sul blocco
-        int to_write = length < free_block ? length : free_block;
-    
-        printf("Writing %d bytes at block %d, cursor %d\n", to_write, curr_block, block_cursor);
-        memcpy(fs_buffer + curr_block * BLOCK_SIZE + block_cursor, data, to_write);
-        printf("HO SCRITTO: %s\n", fs_buffer + curr_block * BLOCK_SIZE + block_cursor);
-        //Se la parte rimanente del blocco non basta, aggiungo un altro blocco al file
-        if(to_write == free_block){
-            int next_block = find_block();
-            if(next_block == -1) return -1;
-            fs.fat[curr_block] = next_block;
-            fs.fat[next_block] = FAT_EOF;
-        }
-
-        DirectoryEntry* entry = fh->entry;
-        //Aggiorno le info del FileHandle e le info di ciò che devo scrivere
-        fh->pointer += to_write;
-        fh->size += to_write;
-        length -= to_write;
-        data += to_write;
-        written += to_write;
-        entry->size += to_write;
+int writeOnFile(FileHandle* fh, const char* buffer, int length){
+    if (!fh || !buffer) {
+        fputs("ERRORE: FileHandle o buffer nullo\n", stderr);
+        return -1;
     }
-    puts("INFO: Scrittura eseguita");
+    int block = fh->entry->start;
+    int written = 0;
+    char* writeFromHere = fh->data;
+    int to_write = length < (fs_buffer + (fh->entry->start + 1) * BLOCK_SIZE - (int)fh->data)? length : fs_buffer + (fh->entry->start + 1) * BLOCK_SIZE - (int)fh->data;
+    while(to_write > 0){
+        memcpy(writeFromHere, buffer, to_write);
+        length -= to_write;
+        buffer += to_write;
+        fh->cursor += to_write;
+        fh->entry->elemCount += to_write;
+        written += to_write;
+        if(length > 0){
+            int index = find_block();
+            fs.fat[block] = index;
+            fs.fat[index] = FAT_EOF;
+            block = index;
+            writeFromHere = fs_buffer + index * BLOCK_SIZE;
+        }
+        to_write = length < BLOCK_SIZE? length : BLOCK_SIZE;
+    }
     return written;
 }
 
@@ -273,33 +266,56 @@ int writeOnFile(FileHandle* fh, const char* data, int length){
 Funzione che prende in ingresso il FileHandle di un file, la dimensione massima di byte da leggere e un buffer e scrive sul buffer ciò che ha letto.
 Restituisce il numero di byte letti oppure -1 se si ha un errore
 */
-int readFromFile(FileHandle* fh, int maxSize, char* buffer){
+int readFromFile(FileHandle* fh, const char* buffer, int maxSize) {
+    if (!fh || !buffer) {
+        fputs("ERRORE: FileHandle o buffer nullo\n", stderr);
+        return -1;
+    }
+
+    DirectoryEntry *entry = fh->entry;
+
     int read = 0;
-    while(maxSize > 0){
-        int curr_block = fh->pointer / BLOCK_SIZE;
-        int block_cursor = fh->pointer % BLOCK_SIZE;
-        int free_block_space = BLOCK_SIZE - block_cursor;
-        int to_read = maxSize < free_block_space ? maxSize : free_block_space;
 
-        printf("Reading %d bytes at block %d, cursor %d\n", to_read, curr_block, block_cursor);
-        memcpy(buffer, fs_buffer + curr_block * BLOCK_SIZE + block_cursor, to_read);
+    int bytesToRead = (maxSize < entry->elemCount)? maxSize : entry->elemCount;
+    int firstBlockData = (fs_buffer + (entry->start + 1) * BLOCK_SIZE) - (int)fh->data;
+    char* readFromHere;
+    int to_read;
+    if(fh->cursor <= firstBlockData){
+        readFromHere = &entry->head + fh->cursor;
+        to_read = firstBlockData - fh->cursor;
+    }
+    else{
+        int cursor = fh->cursor;
+        cursor -= firstBlockData;
+        int block = fs.fat[entry->start];
+        int block_cursor = cursor / BLOCK_SIZE;
+        int curr_cursor = cursor % BLOCK_SIZE;
+        for(int i = 0; i < block_cursor; i++){
+            block = fs.fat[block];
+        }
+        readFromHere = fs_buffer + block * BLOCK_SIZE + curr_cursor;
+        to_read = BLOCK_SIZE - curr_cursor;
+    }
 
-        fh->pointer += to_read;
-        maxSize -= to_read;
-        buffer += to_read;
+    while(bytesToRead > 0){
+        memcpy(buffer, readFromHere, to_read);
+        bytesToRead -= to_read;
         read += to_read;
-
-        if(fs.fat[curr_block] == FAT_EOF) break;
+        buffer += to_read;
+        fh->cursor += to_read;
+        //READFROMHERE  
+        //TO_READ
     }
     return read;
 }
+
 
 /*
 Funzione che prende in ingresso un puntatore a fileHandle e un intero e sposta il cursore del file nella posizione dell'intero
 */
 int seek(FileHandle* fh, int pos){
-    if(pos >= 0 && pos<=fh->size){
-        fh->pointer = pos;
+    if(pos >= 0 && pos<=fh->entry->elemCount){
+        fh->cursor = pos;
     }
 }
 

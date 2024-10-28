@@ -82,8 +82,13 @@ int main(int argc, char** argv){
             int bytes_to_read = MAX_INPUT_SIZE;
             if(strcmp(args[0], "")) bytes_to_read = atoi(args[0]);
             char* data = (char*)calloc(MAX_INPUT_SIZE, sizeof(char));
-            printf("INFO: Leggo dal file %d bytes\n", readFromFile(fh, bytes_to_read, data));
-            printf("STAMPO: %s", data);
+            int read = readFromFile(fh, data, bytes_to_read);
+            printf("INFO: Leggo dal file %d bytes\n", read);
+            puts("STAMPO:");
+            for(int i = 0; i < read; i++){
+                if(data[i] == '\0')printf("[NULL]");
+                else printf("%c", data[i]);
+            }
             free(data);
         }
         else if(!strcmp(cmd, "seek") && argsNum == 1){
