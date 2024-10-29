@@ -19,8 +19,8 @@ void syncro(void* pointer);
 #define MAX_DIRNAME_SIZE 32
 #define MAX_DIR_SIZE 64
 #define MAX_BLOCKS 1024
-#define BLOCK_SIZE 512
-#define MAX_INPUT_SIZE 1024
+#define BLOCK_SIZE 512 //DEVE ESSERE ALMENO 64
+#define MAX_INPUT_SIZE 3000
 #define MAX_NUM_ARGS 3
 #define STARTING_DIR_SIZE 2
 
@@ -34,7 +34,7 @@ typedef struct{
     int is_dir;
     struct DirectoryEntry* parent;
     int is_open;
-    int* head;
+    int head;
 } DirectoryEntry;
 
 /*typedef struct{
@@ -60,8 +60,8 @@ typedef struct{
     DirectoryEntry* entry;
 } FileHandle;
 
-//int resizeDir(DirectoryEntry* dir, int newSize);
 void close_fs(const char* filename);
+void reset_fs(const char* filename);
 
 //Funzioni da implementare
 int createFile(char* fileName);

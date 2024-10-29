@@ -11,15 +11,14 @@ void launch_fs(const char *filename){
     int fd = open(filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
     if(fd == -1) error_handle("open");
 
-    if(ftruncate(fd, BLOCK_SIZE * MAX_BLOCKS)) error_handle("ftruncate");
+    if(ftruncate(fd, sizeof(FileSystem) + BLOCK_SIZE * MAX_BLOCKS)) error_handle("ftruncate");
 
     fs_map = mmap(NULL, sizeof(FileSystem) + BLOCK_SIZE * MAX_BLOCKS, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if(fs_map == MAP_FAILED) error_handle("mmap");
     fs_buffer = fs_map + sizeof(FileSystem);
     fs.root = (DirectoryEntry*)fs_buffer;
-    /////////////////////////////////
-    fs.root->elemCount = 0;
 
+    
     if(close(fd)) error_handle("close");
 
     if(fs.root->elemCount == 0){
@@ -27,12 +26,6 @@ void launch_fs(const char *filename){
         fs.root->is_dir = 1;
         fs.root->is_open = 1;
         fs.root->parent = NULL;
-        //Imposto tutti gli altri bit della cartella a 0
-        int i = sizeof(char) * MAX_DIRNAME_SIZE;
-        i += sizeof(int) * 4;
-        i += sizeof(DirectoryEntry);
-        i += sizeof(int);
-        memset(&fs.root->head, 0, BLOCK_SIZE - sizeof(DirectoryEntry));
         fs.fat[0] = FAT_EOF;
         fs.current_dir = fs.root;
 
@@ -41,9 +34,14 @@ void launch_fs(const char *filename){
         }
     }else{
         fs = *(FileSystem*)fs_map;
+        fs.root = (DirectoryEntry*) fs_buffer;
         fs.current_dir = fs.root;
-        fs.root->head = (int*)fs_buffer;
     }
+}
+
+void reset_fs(const char* filename){
+    memset(fs_map, 0, sizeof(FileSystem) + BLOCK_SIZE * MAX_BLOCKS);
+    fs.root->elemCount = 0;
 }
 
 void close_fs(const char* filename){
@@ -89,8 +87,15 @@ int find_block(){
 Funzione ausiliaria che cerca un file in una directory. Restituisce l'indice del file se lo trova, -1 altrimenti
 */
 int find_file(const char* name, DirectoryEntry *dir){
+    int firstBlockSize = (fs_buffer + (dir->start + 1) * BLOCK_SIZE - (char*)&dir->head);
     for(int i=0; i < dir->elemCount; i++){
-        int block = *(&dir->head + i);
+        int block;
+        if(i < firstBlockSize) block = *(&dir->head + i);
+        else{
+            int curr_block = (i - firstBlockSize) / BLOCK_SIZE;
+            int block_cursor = (i - firstBlockSize) % BLOCK_SIZE;
+            block = *((int*)fs_buffer + curr_block * BLOCK_SIZE + block_cursor);
+        }
         if(strcmp(fs_buffer + block * BLOCK_SIZE, name) == 0) return  i;
     }
     return -1;
@@ -115,21 +120,6 @@ void syncro(void* pointer){
         error_handle("msync");
     }
 }
-
-/*int resizeDir(DirectoryEntry* dir, int newSize){
-    if(newSize < dir->elemCount){
-        fputs("ERRORE: La grandezza dell'array non basta\n", stderr);
-        return -1;
-    }
-    int* newHead = (int*)realloc(dir->head, sizeof(int)*newSize);
-    if(!newHead){
-        fputs("Errore: Impossibile ridimensionare directory\n", stderr);
-        return -1;
-    }
-    dir->head = newHead;
-    dir->size = newSize;
-    return 0;
-}*/
 
 /*
 Funzione che crea un file, nella directory corrente dato il suo nome
@@ -215,7 +205,7 @@ FileHandle* openFile(const char *fileName){
     entry->is_open = 1;
 
     FileHandle* fh = (FileHandle*)malloc(sizeof(FileHandle));
-    fh->data = &entry->head;
+    fh->data = (char*)&entry->head;
     fh->cursor = 0;
     fh->entry = entry;
     return fh;
@@ -225,9 +215,12 @@ FileHandle* openFile(const char *fileName){
 Funzione che prende in input un fileHandle e lo chiude, scrivendo alla fine del suo buffer un carattere di delimitazione
 */
 void closeFile(FileHandle* fh){
-    writeOnFile(fh, "\0", 1);
-    fh->entry->is_open = 0;
-    free(fh);
+    if(fh->entry->is_open){
+        seek(fh, fh->entry->elemCount);
+        writeOnFile(fh, "\0", 1);
+        fh->entry->is_open = 0;
+        free(fh);
+    }
 }
 
 /* 
@@ -241,9 +234,9 @@ int writeOnFile(FileHandle* fh, const char* buffer, int length){
     }
     int block = fh->entry->start;
     int written = 0;
-    char* writeFromHere = fh->data;
-    int to_write = length < (fs_buffer + (fh->entry->start + 1) * BLOCK_SIZE - (int)fh->data)? length : fs_buffer + (fh->entry->start + 1) * BLOCK_SIZE - (int)fh->data;
-    while(to_write > 0){
+    char* writeFromHere = fh->data + fh->cursor;
+    int to_write = length < (fs_buffer + (fh->entry->start + 1) * BLOCK_SIZE - fh->data)? length : fs_buffer + (fh->entry->start + 1) * BLOCK_SIZE - fh->data;
+    while(length > 0){
         memcpy(writeFromHere, buffer, to_write);
         length -= to_write;
         buffer += to_write;
@@ -275,19 +268,20 @@ int readFromFile(FileHandle* fh, const char* buffer, int maxSize) {
     DirectoryEntry *entry = fh->entry;
 
     int read = 0;
+    int block = entry->start;
 
     int bytesToRead = (maxSize < entry->elemCount)? maxSize : entry->elemCount;
-    int firstBlockData = (fs_buffer + (entry->start + 1) * BLOCK_SIZE) - (int)fh->data;
+    char firstBlockData = (fs_buffer + (entry->start + 1) * BLOCK_SIZE) - fh->data;
     char* readFromHere;
     int to_read;
     if(fh->cursor <= firstBlockData){
-        readFromHere = &entry->head + fh->cursor;
+        readFromHere = (char*)&entry->head + fh->cursor;
         to_read = firstBlockData - fh->cursor;
     }
     else{
         int cursor = fh->cursor;
         cursor -= firstBlockData;
-        int block = fs.fat[entry->start];
+        block = fs.fat[entry->start];
         int block_cursor = cursor / BLOCK_SIZE;
         int curr_cursor = cursor % BLOCK_SIZE;
         for(int i = 0; i < block_cursor; i++){
@@ -298,13 +292,14 @@ int readFromFile(FileHandle* fh, const char* buffer, int maxSize) {
     }
 
     while(bytesToRead > 0){
-        memcpy(buffer, readFromHere, to_read);
+        memcpy((char*)buffer, readFromHere, to_read);
         bytesToRead -= to_read;
         read += to_read;
         buffer += to_read;
         fh->cursor += to_read;
-        //READFROMHERE  
-        //TO_READ
+        readFromHere = fs_buffer + fs.fat[block] * BLOCK_SIZE;
+        block = fs.fat[block];
+        to_read = BLOCK_SIZE;
     }
     return read;
 }
@@ -332,22 +327,34 @@ int createDir(const char* dirName){
     if(block == -1) return -1;
 
     fs.fat[block] = FAT_EOF;
-    *(&fs.current_dir->head + fs.current_dir->elemCount) = block;
 
+    int firstBlockSize = fs_buffer + (fs.current_dir->start + 1) * BLOCK_SIZE - (char*)&fs.current_dir->head;
+    
+    
     DirectoryEntry *entry = (DirectoryEntry*)(fs_buffer + block * BLOCK_SIZE);
+    memset(entry, 0, BLOCK_SIZE);
     strncpy(entry->name, dirName, MAX_DIRNAME_SIZE);
     entry->start = block;
     entry->is_dir = 1;
     entry->is_open = 0;
     entry->elemCount = 0;
     entry->parent = (struct DirectoryEntry*)fs.current_dir;
-    //Imposto tutti gli altri bit della cartella a 0
-    int i = sizeof(char) * MAX_DIRNAME_SIZE;
-    i += sizeof(int) * 4;
-    i += sizeof(DirectoryEntry);
-    i += sizeof(int);
-    memset((int*)&entry->head, 0, BLOCK_SIZE - sizeof(DirectoryEntry));
+    
+    if(fs.current_dir->elemCount <= firstBlockSize)
+        *(&fs.current_dir->head + fs.current_dir->elemCount) = block;
+    else{
+        int curr_block = (fs.current_dir->elemCount-firstBlockSize)/BLOCK_SIZE;
+        int block_cursor = (fs.current_dir->elemCount - firstBlockSize)%BLOCK_SIZE;
+        int index = fs.current_dir->start;
+        for(int i = 0; i < curr_block; i++){
+            index = fs.fat[index];
+        }
+        *((int*)fs_buffer + index * BLOCK_SIZE + block_cursor) = block;
+
+    }
+
     fs.current_dir->elemCount++;
+    
     return 0;
 }
 
