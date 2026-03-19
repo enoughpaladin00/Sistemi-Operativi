@@ -23,7 +23,7 @@ Dopo la compilazione, se vuoi eliminare file superflui, esegui:
 
 'make clean'
 
-###Esecuzione
+### Esecuzione
 
 Per eseguire il file system, esegui il seguente comando:
 
